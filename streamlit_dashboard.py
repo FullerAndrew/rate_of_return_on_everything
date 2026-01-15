@@ -130,6 +130,8 @@ def calculate_rolling_statistics(returns, window):
 @st.cache_data
 def load_data():
     """Load the Rate of Return on Everything dataset"""
+    import os
+    
     if STATA_READER is None:
         st.error("No Stata file reader available. Please install pyreadstat or pandas with Stata support.")
         return None
@@ -144,10 +146,23 @@ def load_data():
     
     for path in possible_paths:
         try:
+            # Check if file exists first
+            if not os.path.exists(path):
+                continue
+            
+            # Read the file - handle both pyreadstat and pandas
             if STATA_READER == 'pyreadstat':
-                df, meta = pyreadstat.read_dta(path)
+                # pyreadstat should handle binary files correctly
+                # Try without encoding first, then with latin1 if needed
+                try:
+                    df, meta = pyreadstat.read_dta(path)
+                except (UnicodeDecodeError, ValueError):
+                    # If encoding error, try with latin1
+                    df, meta = pyreadstat.read_dta(path, encoding='latin1')
             else:  # pandas
-                df = pd.read_stata(path)
+                # Open in binary mode for pandas to avoid encoding issues
+                with open(path, 'rb') as f:
+                    df = pd.read_stata(f)
             
             # Preprocess the data to handle common Stata issues
             df = preprocess_stata_data(df)
@@ -156,16 +171,21 @@ def load_data():
         except FileNotFoundError:
             continue
         except Exception as e:
-            st.warning(f"Error with path {path}: {str(e)}")
+            # Only show warning if file exists (to avoid cluttering with path errors)
+            if os.path.exists(path):
+                st.warning(f"Error reading file at {path}: {str(e)}")
             continue
     
-    # If none of the paths work, show error
+    # If none of the paths work, show error with current directory info
+    current_dir = os.getcwd()
     st.error("Data file not found. Please ensure the Stata file is in the correct location.")
+    st.info(f"Current working directory: {current_dir}")
     st.info("Expected file: rore_public_main.dta")
     st.info("Available paths tried:")
     for path in possible_paths:
-        st.info(f"  - {path}")
-        return None
+        exists = os.path.exists(path) if path else False
+        st.info(f"  - {path} {'(EXISTS)' if exists else '(NOT FOUND)'}")
+    return None
 
 def main():
     st.markdown('<h1 class="main-header">📈 Rate of Return on Everything Dashboard</h1>', unsafe_allow_html=True)

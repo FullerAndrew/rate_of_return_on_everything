@@ -1,0 +1,10 @@
+# Ensure Stata .dta files are treated as binary
+*.dta binary
+
+# Ensure other binary files are treated correctly
+*.csv text
+*.py text
+*.txt text
+*.yaml text
+*.yml text
+*.md text
