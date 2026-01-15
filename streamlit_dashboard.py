@@ -7,14 +7,16 @@ from plotly.subplots import make_subplots
 import warnings
 warnings.filterwarnings('ignore')
 
-# Try to import pyreadstat for Stata file reading
+# Try to import Stata file readers - prefer pandas as it's more reliable
+STATA_READER = None
 try:
-    import pyreadstat
-    STATA_READER = 'pyreadstat'
-except ImportError:
+    # Check if pandas can read Stata files (pandas 1.0+)
+    pd.read_stata
+    STATA_READER = 'pandas'
+except AttributeError:
     try:
-        import pandas.io.stata
-        STATA_READER = 'pandas'
+        import pyreadstat
+        STATA_READER = 'pyreadstat'
     except ImportError:
         STATA_READER = None
 
@@ -150,19 +152,32 @@ def load_data():
             if not os.path.exists(path):
                 continue
             
-            # Read the file - handle both pyreadstat and pandas
-            if STATA_READER == 'pyreadstat':
-                # pyreadstat should handle binary files correctly
-                # Try without encoding first, then with latin1 if needed
-                try:
-                    df, meta = pyreadstat.read_dta(path)
-                except (UnicodeDecodeError, ValueError):
-                    # If encoding error, try with latin1
-                    df, meta = pyreadstat.read_dta(path, encoding='latin1')
-            else:  # pandas
-                # Open in binary mode for pandas to avoid encoding issues
+            # Read the file - prefer pandas as it handles binary files more reliably
+            if STATA_READER == 'pandas':
+                # Use pandas with binary file handle - most reliable method
+                # pandas.read_stata handles encoding internally
                 with open(path, 'rb') as f:
                     df = pd.read_stata(f)
+            elif STATA_READER == 'pyreadstat':
+                # pyreadstat with explicit encoding to avoid UTF-8 issues
+                # The encoding parameter affects how metadata (variable labels) are read
+                try:
+                    # Try with latin1 encoding first (common for Stata files)
+                    df, meta = pyreadstat.read_dta(path, encoding='latin1')
+                except (UnicodeDecodeError, ValueError) as e:
+                    # If encoding error, try with iso-8859-1 (similar to latin1)
+                    try:
+                        df, meta = pyreadstat.read_dta(path, encoding='iso-8859-1')
+                    except Exception:
+                        # Last resort: try without encoding (may fail but worth trying)
+                        df, meta = pyreadstat.read_dta(path)
+            else:
+                # Fallback: try pandas if it's available even if not detected
+                try:
+                    with open(path, 'rb') as f:
+                        df = pd.read_stata(f)
+                except Exception as e:
+                    raise Exception(f"Unable to read Stata file. Error: {str(e)}")
             
             # Preprocess the data to handle common Stata issues
             df = preprocess_stata_data(df)
