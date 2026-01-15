@@ -11,9 +11,11 @@ warnings.filterwarnings('ignore')
 STATA_READER = None
 try:
     # Check if pandas can read Stata files (pandas 1.0+)
-    pd.read_stata
-    STATA_READER = 'pandas'
-except AttributeError:
+    if hasattr(pd, 'read_stata'):
+        STATA_READER = 'pandas'
+    else:
+        raise AttributeError("pandas.read_stata not available")
+except (AttributeError, Exception):
     try:
         import pyreadstat
         STATA_READER = 'pyreadstat'
@@ -145,10 +147,12 @@ def load_data():
     for path in parquet_paths:
         if os.path.exists(path):
             try:
-                df = pd.read_parquet(path)
+                df = pd.read_parquet(path, engine='pyarrow')
                 return df
             except Exception as e:
-                st.warning(f"Error reading Parquet file at {path}: {str(e)}")
+                # Only show warning if it's the last path, to avoid cluttering
+                if path == parquet_paths[-1]:
+                    st.warning(f"Error reading Parquet file at {path}: {str(e)}")
                 continue
     
     # Fallback to Stata file if Parquet not available
