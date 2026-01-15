@@ -134,6 +134,24 @@ def load_data():
     """Load the Rate of Return on Everything dataset"""
     import os
     
+    # First, try to load from Parquet (preferred - faster and no encoding issues)
+    parquet_paths = [
+        "./6389799/RORE_QJE_replication_v2/data/rore_public_main.parquet",
+        "6389799/RORE_QJE_replication_v2/data/rore_public_main.parquet",
+        "../6389799/RORE_QJE_replication_v2/data/rore_public_main.parquet",
+        "./data/rore_public_main.parquet"
+    ]
+    
+    for path in parquet_paths:
+        if os.path.exists(path):
+            try:
+                df = pd.read_parquet(path)
+                return df
+            except Exception as e:
+                st.warning(f"Error reading Parquet file at {path}: {str(e)}")
+                continue
+    
+    # Fallback to Stata file if Parquet not available
     if STATA_READER is None:
         st.error("No Stata file reader available. Please install pyreadstat or pandas with Stata support.")
         return None
