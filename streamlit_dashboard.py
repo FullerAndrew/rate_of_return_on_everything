@@ -304,7 +304,7 @@ def create_return_histogram(returns_data, bins=None):
 @st.cache_data
 def load_data():
     """Load the Rate of Return on Everything dataset"""
-    # First, try to load from Parquet file (preferred format)
+    # First, try to load from Parquet file (preferred format - faster and no encoding issues)
     parquet_paths = [
         "./6389799/RORE_QJE_replication_v2/data/rore_public_main.parquet",
         "6389799/RORE_QJE_replication_v2/data/rore_public_main.parquet",
@@ -313,17 +313,15 @@ def load_data():
     ]
     
     for path in parquet_paths:
-        try:
-            if os.path.exists(path):
+        if os.path.exists(path):
+            try:
                 df = pd.read_parquet(path)
                 # Preprocess the data to handle common issues
                 df = preprocess_stata_data(df)
                 return df
-        except FileNotFoundError:
-            continue
-        except Exception as e:
-            st.warning(f"Error reading Parquet file at {path}: {str(e)}")
-            continue
+            except Exception as e:
+                st.warning(f"Error reading Parquet file at {path}: {str(e)}")
+                continue
     
     # Fall back to Stata file if Parquet is not available
     if STATA_READER is None:
@@ -339,29 +337,31 @@ def load_data():
     ]
     
     for path in stata_paths:
-        try:
-            if os.path.exists(path):
-                if STATA_READER == 'pyreadstat':
+        if os.path.exists(path):
+            try:
+                if STATA_READER == 'pandas':
+                    # Use pandas with binary file handle - most reliable method
+                    with open(path, 'rb') as f:
+                        df = pd.read_stata(f)
+                elif STATA_READER == 'pyreadstat':
+                    # pyreadstat with explicit encoding to avoid UTF-8 issues
                     df, meta = pyreadstat.read_dta(path, encoding='latin1')
-                else:  # pandas
-                    df = pd.read_stata(path)
                 
                 # Preprocess the data to handle common Stata issues
                 df = preprocess_stata_data(df)
                 
                 return df
-        except FileNotFoundError:
-            continue
-        except Exception as e:
-            st.warning(f"Error with path {path}: {str(e)}")
-            continue
+            except Exception as e:
+                st.warning(f"Error with path {path}: {str(e)}")
+                continue
     
     # If none of the paths work, show error
     st.error("Data file not found. Please ensure the data file is in the correct location.")
     st.info("Expected files: rore_public_main.parquet or rore_public_main.dta")
     st.info("Available paths tried:")
     for path in parquet_paths + stata_paths:
-        st.info(f"  - {path}")
+        exists = "EXISTS" if os.path.exists(path) else "NOT FOUND"
+        st.info(f"  - {path} ({exists})")
     return None
 
 def main():
